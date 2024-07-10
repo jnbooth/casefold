@@ -1,0 +1,8 @@
+[package]
+name = "casefold"
+version = "0.1.0"
+authors = ["Joshua Booth <joshua.n.booth@gmail.com>"]
+edition = "2021"
+publish = false
+description = "Case insensitive data types"
+repository = "https://github.com/jnbooth/casefold"

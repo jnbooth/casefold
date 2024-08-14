@@ -4,7 +4,7 @@ use super::to_case_fold::ToCaseFold;
 macro_rules! impl_ci {
     ($t:ty) => {
         impl<S: ?Sized + AsRef<$t>> Eq for CaseFold<S> {}
-    
+
         impl<S, Rhs> PartialOrd<CaseFold<Rhs>> for CaseFold<S>
         where
             S: ?Sized + AsRef<$t>,
@@ -136,7 +136,7 @@ pub mod ascii {
         #[inline]
         fn hash<H: Hasher>(&self, hasher: &mut H) {
             for byte in self.caseless_iter() {
-                hasher.write_u8(byte)
+                hasher.write_u8(byte);
             }
         }
     }
@@ -194,7 +194,7 @@ pub mod unicode {
         #[inline]
         fn hash<H: Hasher>(&self, hasher: &mut H) {
             for c in self.caseless_iter() {
-                hasher.write_u32(c as u32)
+                hasher.write_u32(c as u32);
             }
         }
     }

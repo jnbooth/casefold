@@ -6,3 +6,7 @@ edition = "2021"
 publish = false
 description = "Case insensitive data types"
 repository = "https://github.com/jnbooth/casefold"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"

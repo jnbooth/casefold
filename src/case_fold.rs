@@ -53,10 +53,8 @@ impl<'a, S: ?Sized + ToOwned + AsRef<str>> CaseFold<'a, S> {
     #[inline]
     fn as_str(&self) -> &str {
         match self {
-            Self::Ascii(s) => s.borrow(),
-            Self::BorrowedAscii(s) => s,
-            Self::Unicode(s) => s.borrow(),
-            Self::BorrowedUnicode(s) => s,
+            Self::Ascii(s) | Self::Unicode(s) => s.borrow(),
+            Self::BorrowedAscii(s) | Self::BorrowedUnicode(s) => s,
         }
         .as_ref()
     }

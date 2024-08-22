@@ -194,7 +194,7 @@ pub mod unicode {
         #[inline]
         fn hash<H: Hasher>(&self, hasher: &mut H) {
             for c in self.caseless_iter() {
-                hasher.write_u32(c as u32);
+                hasher.write_u32(u32::from(c));
             }
         }
     }

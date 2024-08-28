@@ -1,5 +1,4 @@
 use super::as_ref_hashmap::AsRefHashMap;
-use super::to_case_fold::ToCaseFold;
 
 macro_rules! impl_ci {
     ($t:ty) => {
@@ -27,6 +26,10 @@ macro_rules! impl_ci {
             pub const fn new(s: S) -> Self {
                 Self(s)
             }
+
+            pub fn unfold(self) -> S {
+                self.0
+            }
         }
 
         impl<S: ?Sized> CaseFold<S> {
@@ -36,43 +39,36 @@ macro_rules! impl_ci {
             }
         }
 
+        impl<'a, S: ?Sized> From<&CaseFold<&'a S>> for &'a CaseFold<S> {
+            fn from(value: &CaseFold<&'a S>) -> Self {
+                value.0.into()
+            }
+        }
+
         impl<S: ?Sized + AsRef<str>> CaseFold<S> {
             pub fn as_str(&self) -> &str {
                 self.0.as_ref()
             }
         }
 
-        impl<'a, S: ?Sized> ToCaseFold<&'a CaseFold<S>> for &'a S {
-            #[inline]
-            fn to_case_fold(self) -> &'a CaseFold<S> {
-                CaseFold::borrow(self)
-            }
-        }
-        impl<'a, S: ?Sized> From<&'a S> for &'a CaseFold<S> {
-            #[inline]
-            fn from(value: &'a S) -> Self {
-                value.to_case_fold()
-            }
-        }
-
-        impl<S> ToCaseFold<CaseFold<S>> for S {
-            #[inline]
-            fn to_case_fold(self) -> CaseFold<Self> {
-                CaseFold::new(self)
-            }
-        }
-
         impl<S> From<S> for CaseFold<S> {
             #[inline]
             fn from(value: S) -> Self {
-                value.to_case_fold()
+                CaseFold::new(value)
+            }
+        }
+
+        impl<'a, S: ?Sized> From<&'a S> for &'a CaseFold<S> {
+            #[inline]
+            fn from(value: &'a S) -> Self {
+                CaseFold::borrow(value)
             }
         }
 
         impl<S: AsRef<$t>> std::borrow::Borrow<CaseFold<$t>> for CaseFold<S> {
             #[inline]
             fn borrow(&self) -> &CaseFold<$t> {
-                self.0.as_ref().to_case_fold()
+                self.0.as_ref().into()
             }
         }
 
@@ -86,14 +82,21 @@ macro_rules! impl_ci {
         impl<S: AsRef<$t>> AsRef<CaseFold<$t>> for CaseFold<S> {
             #[inline]
             fn as_ref(&self) -> &CaseFold<$t> {
-                self.0.as_ref().to_case_fold()
+                self.0.as_ref().into()
+            }
+        }
+
+        impl<S: AsRef<$t>> AsRef<$t> for CaseFold<S> {
+            #[inline]
+            fn as_ref(&self) -> &$t {
+                self.0.as_ref()
             }
         }
 
         impl<'a, S: ?Sized + AsRef<str>> Display for CaseFold<S> {
             #[inline]
             fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-                self.as_str().fmt(f)
+                self.0.as_ref().fmt(f)
             }
         }
 
@@ -107,8 +110,6 @@ pub mod ascii {
     use std::fmt::{self, Display, Formatter};
     use std::hash::{Hash, Hasher};
     use std::{iter, slice};
-
-    use super::ToCaseFold;
 
     #[derive(Copy, Clone, Debug, Default)]
     #[repr(transparent)]
@@ -144,14 +145,14 @@ pub mod ascii {
     impl AsRef<CaseFold<[u8]>> for str {
         #[inline]
         fn as_ref(&self) -> &CaseFold<[u8]> {
-            self.as_bytes().to_case_fold()
+            self.as_bytes().into()
         }
     }
 
     impl AsRef<CaseFold<[u8]>> for String {
         #[inline]
         fn as_ref(&self) -> &CaseFold<[u8]> {
-            self.as_bytes().to_case_fold()
+            self.as_bytes().into()
         }
     }
 
@@ -165,8 +166,6 @@ pub mod unicode {
     use std::hash::{Hash, Hasher};
     use std::iter;
     use std::str::Chars;
-
-    use super::ToCaseFold;
 
     #[derive(Copy, Clone, Debug, Default)]
     #[repr(transparent)]
@@ -202,14 +201,14 @@ pub mod unicode {
     impl AsRef<CaseFold<str>> for str {
         #[inline]
         fn as_ref(&self) -> &CaseFold<str> {
-            self.to_case_fold()
+            self.into()
         }
     }
 
     impl AsRef<CaseFold<str>> for String {
         #[inline]
         fn as_ref(&self) -> &CaseFold<str> {
-            self.as_str().to_case_fold()
+            self.as_str().into()
         }
     }
 

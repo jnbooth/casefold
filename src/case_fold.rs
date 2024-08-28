@@ -6,7 +6,6 @@ use std::hash::{Hash, Hasher};
 
 use super::as_ref_hashmap::AsRefHashMap;
 use super::case_fold_impl::{ascii, unicode};
-use super::to_case_fold::ToCaseFold;
 
 pub enum CaseFold<'a, S: 'a + ToOwned + ?Sized> {
     Ascii(<S as ToOwned>::Owned),
@@ -40,11 +39,32 @@ impl<'a, S: ToOwned + AsRef<str> + ?Sized> CaseFold<'a, S> {
             Self::Unicode(s)
         }
     }
+
     pub fn borrowed(s: &'a S) -> Self {
         if s.as_ref().is_ascii() {
             Self::BorrowedAscii(s)
         } else {
             Self::BorrowedUnicode(s)
+        }
+    }
+}
+
+impl<'a, S: ?Sized + ToOwned + AsRef<str>> CaseFold<'a, S> {
+    #[inline]
+    fn as_unicode(&self) -> &unicode::CaseFold<str> {
+        match self {
+            Self::Ascii(s) | Self::Unicode(s) => s.borrow().as_ref().into(),
+            Self::BorrowedAscii(s) | Self::BorrowedUnicode(s) => s.as_ref().into(),
+        }
+    }
+
+    #[inline]
+    fn try_ascii(&self) -> Result<&ascii::CaseFold<str>, &unicode::CaseFold<str>> {
+        match self {
+            Self::Ascii(s) => Ok(s.borrow().as_ref().into()),
+            Self::BorrowedAscii(s) => Ok((*s).as_ref().into()),
+            Self::Unicode(s) => Err(s.borrow().as_ref().into()),
+            Self::BorrowedUnicode(s) => Err((*s).as_ref().into()),
         }
     }
 }
@@ -57,25 +77,6 @@ impl<'a, S: ?Sized + ToOwned + AsRef<str>> CaseFold<'a, S> {
             Self::BorrowedAscii(s) | Self::BorrowedUnicode(s) => s,
         }
         .as_ref()
-    }
-
-    // to_case_fold is a simple cast here (see below). Should be a no-op as long as everything is
-    // inlined. Because as_str calls as_ref, as_ref calls in ascii::CaseFold and unicode::CaseFold
-    // will be no-ops as well. Therefore, this approach wins out over holding actual
-    // ascii::CaseFolds or unicode::CaseFolds in the enum fields.
-    #[inline]
-    fn as_unicode(&self) -> &unicode::CaseFold<str> {
-        self.as_str().to_case_fold()
-    }
-
-    #[inline]
-    fn try_ascii(&self) -> Result<&ascii::CaseFold<str>, &unicode::CaseFold<str>> {
-        match self {
-            Self::Ascii(s) => Ok(s.borrow().as_ref().to_case_fold()),
-            Self::BorrowedAscii(s) => Ok(s.as_ref().to_case_fold()),
-            Self::Unicode(s) => Err(s.borrow().as_ref().to_case_fold()),
-            Self::BorrowedUnicode(s) => Err(s.as_ref().to_case_fold()),
-        }
     }
 
     #[inline]

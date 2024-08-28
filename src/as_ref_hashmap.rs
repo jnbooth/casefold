@@ -6,6 +6,7 @@ use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
+#[repr(transparent)]
 pub struct AsRefHashMap<R: ?Sized, K, V, S = RandomState>(HashMap<K, V, S>, PhantomData<R>);
 
 impl<R: ?Sized, K: Eq + Hash, V: PartialEq, S: BuildHasher> PartialEq for AsRefHashMap<R, K, V, S> {

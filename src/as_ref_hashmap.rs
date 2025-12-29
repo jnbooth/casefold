@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 use std::collections::hash_map::{Entry, HashMap, RandomState};
-use std::fmt::{self, Debug, Formatter};
+use std::fmt;
 use std::hash::{BuildHasher, Hash};
 use std::iter::FromIterator;
 use std::marker::PhantomData;
@@ -21,8 +21,8 @@ impl<R: ?Sized, K: Clone, V: Clone, S: Clone> Clone for AsRefHashMap<R, K, V, S>
     }
 }
 
-impl<R: ?Sized, K: Debug, V: Debug, S> Debug for AsRefHashMap<R, K, V, S> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+impl<R: ?Sized, K: fmt::Debug, V: fmt::Debug, S> fmt::Debug for AsRefHashMap<R, K, V, S> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
     }
 }
@@ -59,7 +59,7 @@ impl<R: ?Sized, K, V, S> AsRefHashMap<R, K, V, S> {
 
 impl<R: ?Sized + Eq + Hash, K: Eq + Hash + Borrow<R>, V, S: BuildHasher> AsRefHashMap<R, K, V, S> {
     #[inline]
-    pub fn entry<Q>(&mut self, k: Q) -> Entry<K, V>
+    pub fn entry<Q>(&mut self, k: Q) -> Entry<'_, K, V>
     where
         Q: Into<K>,
     {

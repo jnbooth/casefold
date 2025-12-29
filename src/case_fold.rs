@@ -1,8 +1,9 @@
 use std::borrow::{Borrow, ToOwned};
 use std::cmp::Ordering;
 use std::collections::hash_map::RandomState;
-use std::fmt::{self, Debug, Display, Formatter};
+use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::ops::Deref;
 
 use super::as_ref_hashmap::AsRefHashMap;
 use super::case_fold_impl::{ascii, unicode};
@@ -18,28 +19,31 @@ impl<'a, S: 'a + ToOwned + ?Sized> Clone for CaseFold<'a, S> {
     fn clone(&self) -> Self {
         match self {
             Self::BorrowedAscii(b) => Self::BorrowedAscii(b),
-            Self::Ascii(o) => {
-                let b: &S = o.borrow();
-                Self::Ascii(b.to_owned())
-            }
+            Self::Ascii(o) => Self::Ascii(S::to_owned(o.borrow())),
             Self::BorrowedUnicode(b) => Self::BorrowedUnicode(b),
-            Self::Unicode(o) => {
-                let b: &S = o.borrow();
-                Self::Unicode(b.to_owned())
-            }
+            Self::Unicode(o) => Self::Unicode(S::to_owned(o.borrow())),
         }
     }
 }
 
-impl<'a, S: ToOwned + AsRef<str> + ?Sized> CaseFold<'a, S> {
-    pub fn new(s: S::Owned) -> Self {
-        if s.borrow().as_ref().is_ascii() {
-            Self::Ascii(s)
-        } else {
-            Self::Unicode(s)
+impl<'a, S: 'a + ToOwned + ?Sized> Deref for CaseFold<'a, S> {
+    type Target = S;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Ascii(s) | Self::Unicode(s) => s.borrow(),
+            Self::BorrowedAscii(s) | Self::BorrowedUnicode(s) => s,
         }
     }
+}
 
+impl<'a, T, S: 'a + ToOwned + AsRef<T> + ?Sized> AsRef<T> for CaseFold<'a, S> {
+    fn as_ref(&self) -> &T {
+        (**self).as_ref()
+    }
+}
+
+impl<'a, S: ToOwned + AsRef<str> + ?Sized> CaseFold<'a, S> {
     pub fn borrowed(s: &'a S) -> Self {
         if s.as_ref().is_ascii() {
             Self::BorrowedAscii(s)
@@ -49,119 +53,108 @@ impl<'a, S: ToOwned + AsRef<str> + ?Sized> CaseFold<'a, S> {
     }
 }
 
-impl<'a, S: ?Sized + ToOwned + AsRef<str>> CaseFold<'a, S> {
-    #[inline]
-    fn as_unicode(&self) -> &unicode::CaseFold<str> {
-        match self {
-            Self::Ascii(s) | Self::Unicode(s) => s.borrow().as_ref().into(),
-            Self::BorrowedAscii(s) | Self::BorrowedUnicode(s) => s.as_ref().into(),
+impl<S: ?Sized + ToOwned + AsRef<str>> CaseFold<'_, S> {
+    pub fn new(s: S::Owned) -> Self {
+        if s.borrow().as_ref().is_ascii() {
+            Self::Ascii(s)
+        } else {
+            Self::Unicode(s)
         }
     }
 
-    #[inline]
-    fn try_ascii(&self) -> Result<&ascii::CaseFold<str>, &unicode::CaseFold<str>> {
-        match self {
-            Self::Ascii(s) => Ok(s.borrow().as_ref().into()),
-            Self::BorrowedAscii(s) => Ok((*s).as_ref().into()),
-            Self::Unicode(s) => Err(s.borrow().as_ref().into()),
-            Self::BorrowedUnicode(s) => Err((*s).as_ref().into()),
-        }
-    }
-}
-
-impl<'a, S: ?Sized + ToOwned + AsRef<str>> CaseFold<'a, S> {
     #[inline]
     fn as_str(&self) -> &str {
-        match self {
-            Self::Ascii(s) | Self::Unicode(s) => s.borrow(),
-            Self::BorrowedAscii(s) | Self::BorrowedUnicode(s) => s,
-        }
-        .as_ref()
+        (**self).as_ref()
     }
 
     #[inline]
-    #[allow(clippy::type_complexity)]
-    fn pair<'b, Rhs: ?Sized + ToOwned + AsRef<str>>(
-        &'a self,
-        other: &'b CaseFold<'b, Rhs>,
-    ) -> Result<
-        (&'a ascii::CaseFold<str>, &'b ascii::CaseFold<str>),
-        (&'a unicode::CaseFold<str>, &'b unicode::CaseFold<str>),
-    > {
-        match (self.try_ascii(), other.try_ascii()) {
-            (Ok(x), Ok(y)) => Ok((x, y)),
-            (Ok(..), Err(y)) => Err((self.as_unicode(), y)),
-            (Err(x), Ok(..)) => Err((x, other.as_unicode())),
-            (Err(x), Err(y)) => Err((x, y)),
-        }
+    fn as_unicode(&self) -> &unicode::CaseFold<str> {
+        self.as_str().into()
+    }
+
+    #[inline]
+    fn as_ascii(&self) -> Option<&ascii::CaseFold<str>> {
+        Some(
+            match self {
+                Self::Ascii(s) => s.borrow(),
+                Self::BorrowedAscii(s) => s,
+                Self::Unicode(_) | Self::BorrowedUnicode(_) => return None,
+            }
+            .as_ref()
+            .into(),
+        )
     }
 }
 
-impl<'a, 'b, S, Rhs> PartialEq<CaseFold<'a, Rhs>> for CaseFold<'b, S>
+impl<S, Rhs> PartialEq<CaseFold<'_, Rhs>> for CaseFold<'_, S>
 where
     S: ?Sized + ToOwned + AsRef<str>,
     Rhs: ?Sized + ToOwned + AsRef<str>,
 {
     #[inline]
     fn eq(&self, other: &CaseFold<Rhs>) -> bool {
-        match self.pair(other) {
-            Ok((x, y)) => x == y,
-            Err((x, y)) => x == y,
+        if let Some(x) = self.as_ascii()
+            && let Some(y) = other.as_ascii()
+        {
+            x == y
+        } else {
+            self.as_unicode() == other.as_unicode()
         }
     }
 }
 
-impl<'a, S: ?Sized + AsRef<str> + ToOwned> Eq for CaseFold<'a, S> {}
+impl<S: ?Sized + AsRef<str> + ToOwned> Eq for CaseFold<'_, S> {}
 
-impl<'a, S: ?Sized + AsRef<str> + ToOwned> Hash for CaseFold<'a, S> {
+impl<S: ?Sized + AsRef<str> + ToOwned> Hash for CaseFold<'_, S> {
     #[inline]
     fn hash<H: Hasher>(&self, hasher: &mut H) {
-        match self.try_ascii() {
-            Ok(x) => x.hash(hasher),
-            Err(x) => x.hash(hasher),
-        }
+        self.as_unicode().hash(hasher);
     }
 }
 
-impl<'a, 'b, S, Rhs> PartialOrd<CaseFold<'a, Rhs>> for CaseFold<'b, S>
+impl<S, Rhs> PartialOrd<CaseFold<'_, Rhs>> for CaseFold<'_, S>
 where
     S: ?Sized + AsRef<str> + ToOwned,
     Rhs: ?Sized + AsRef<str> + ToOwned,
 {
     #[inline]
     fn partial_cmp(&self, other: &CaseFold<Rhs>) -> Option<Ordering> {
-        match self.pair(other) {
-            Ok((x, y)) => x.partial_cmp(y),
-            Err((x, y)) => x.partial_cmp(y),
+        if let Some(x) = self.as_ascii()
+            && let Some(y) = other.as_ascii()
+        {
+            x.partial_cmp(y)
+        } else {
+            self.as_unicode().partial_cmp(other.as_unicode())
         }
     }
 }
 
-impl<'a, S: ?Sized + AsRef<str> + ToOwned> Ord for CaseFold<'a, S> {
+impl<S: ?Sized + AsRef<str> + ToOwned> Ord for CaseFold<'_, S> {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
-        match self.pair(other) {
-            Ok((x, y)) => x.cmp(y),
-            Err((x, y)) => x.cmp(y),
+        if let Some(x) = self.as_ascii()
+            && let Some(y) = other.as_ascii()
+        {
+            x.cmp(y)
+        } else {
+            self.as_unicode().cmp(other.as_unicode())
         }
     }
 }
 
-impl<'a, S: ?Sized + AsRef<str> + ToOwned> Debug for CaseFold<'a, S> {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        Debug::fmt(self.as_str(), f)
+impl<S: ?Sized + AsRef<str> + ToOwned> fmt::Debug for CaseFold<'_, S> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.as_str().fmt(f)
     }
 }
 
-impl<'a, S: ?Sized + AsRef<str> + ToOwned> Display for CaseFold<'a, S> {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        Display::fmt(self.as_str(), f)
+impl<S: ?Sized + AsRef<str> + ToOwned> fmt::Display for CaseFold<'_, S> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.as_str().fmt(f)
     }
 }
 
-impl<'a, S: AsRef<str> + ToOwned> Borrow<unicode::CaseFold<str>> for CaseFold<'a, S> {
+impl<S: AsRef<str> + ToOwned> Borrow<unicode::CaseFold<str>> for CaseFold<'_, S> {
     fn borrow(&self) -> &unicode::CaseFold<str> {
         self.as_unicode()
     }

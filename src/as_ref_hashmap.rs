@@ -1,13 +1,20 @@
-use std::borrow::Borrow;
-use std::collections::hash_map::{Entry, HashMap, RandomState};
-use std::fmt;
-use std::hash::{BuildHasher, Hash};
-use std::iter::FromIterator;
-use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
+use core::borrow::Borrow;
+use core::fmt;
+use core::hash::{BuildHasher, Hash};
+use core::iter::FromIterator;
+use core::marker::PhantomData;
+use core::ops::{Deref, DerefMut};
+#[cfg(not(feature = "std"))]
+pub(crate) use hashbrown::DefaultHashBuilder;
+#[cfg(not(feature = "std"))]
+use hashbrown::hash_map::{Entry, HashMap};
+#[cfg(feature = "std")]
+pub(crate) use std::collections::hash_map::RandomState as DefaultHashBuilder;
+#[cfg(feature = "std")]
+use std::collections::hash_map::{Entry, HashMap};
 
 #[repr(transparent)]
-pub struct AsRefHashMap<R: ?Sized, K, V, S = RandomState>(HashMap<K, V, S>, PhantomData<R>);
+pub struct AsRefHashMap<R: ?Sized, K, V, S = DefaultHashBuilder>(HashMap<K, V, S>, PhantomData<R>);
 
 impl<R: ?Sized, K: Eq + Hash, V: PartialEq, S: BuildHasher> PartialEq for AsRefHashMap<R, K, V, S> {
     fn eq(&self, other: &Self) -> bool {
@@ -59,7 +66,17 @@ impl<R: ?Sized, K, V, S> AsRefHashMap<R, K, V, S> {
 
 impl<R: ?Sized + Eq + Hash, K: Eq + Hash + Borrow<R>, V, S: BuildHasher> AsRefHashMap<R, K, V, S> {
     #[inline]
+    #[cfg(feature = "std")]
     pub fn entry<Q>(&mut self, k: Q) -> Entry<'_, K, V>
+    where
+        Q: Into<K>,
+    {
+        self.0.entry(k.into())
+    }
+
+    #[inline]
+    #[cfg(not(feature = "std"))]
+    pub fn entry<Q>(&mut self, k: Q) -> Entry<'_, K, V, S>
     where
         Q: Into<K>,
     {

@@ -1,12 +1,22 @@
 [package]
 name = "casefold"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Joshua Booth <joshua.n.booth@gmail.com>"]
 edition = "2024"
 publish = false
+license = "MIT"
 description = "Case insensitive data types"
 repository = "https://github.com/jnbooth/casefold"
+categories = ["internationalization", "text-processing", "no-std"]
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 module_name_repetitions = "allow"
+must_use_candidate = "allow"
+
+[features]
+default = ["std"]
+std = []
+
+[target.'cfg(not(feature = "std"))'.dependencies]
+hashbrown = "0.16.1"

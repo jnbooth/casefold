@@ -1,5 +1,13 @@
 macro_rules! impl_ci {
     ($t:ty) => {
+        use core::borrow::Borrow;
+        use core::cmp::Ordering;
+        use core::ops::{Deref, DerefMut};
+        use core::str::FromStr;
+        use core::{fmt, ptr};
+
+        use crate::as_ref_hashmap::{AsRefHashMap, DefaultHashBuilder};
+
         impl<S: ?Sized + AsRef<$t>> Eq for CaseFold<S> {}
 
         impl<S, Rhs> PartialOrd<CaseFold<Rhs>> for CaseFold<S>
@@ -8,14 +16,14 @@ macro_rules! impl_ci {
             Rhs: ?Sized + AsRef<$t>,
         {
             #[inline]
-            fn partial_cmp(&self, other: &CaseFold<Rhs>) -> Option<std::cmp::Ordering> {
+            fn partial_cmp(&self, other: &CaseFold<Rhs>) -> Option<Ordering> {
                 Some(self.caseless_iter().cmp(other.caseless_iter()))
             }
         }
 
         impl<S: ?Sized + AsRef<$t>> Ord for CaseFold<S> {
             #[inline]
-            fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            fn cmp(&self, other: &Self) -> Ordering {
                 self.caseless_iter().cmp(other.caseless_iter())
             }
         }
@@ -36,11 +44,11 @@ macro_rules! impl_ci {
             #[inline]
             pub const fn borrow(s: &S) -> &Self {
                 // SAFETY: #[repr(transparent)]
-                unsafe { &*(std::ptr::from_ref::<S>(s) as *const Self) }
+                unsafe { &*(ptr::from_ref::<S>(s) as *const Self) }
             }
         }
 
-        impl<S> std::ops::Deref for CaseFold<S> {
+        impl<S> Deref for CaseFold<S> {
             type Target = S;
 
             #[inline]
@@ -49,7 +57,7 @@ macro_rules! impl_ci {
             }
         }
 
-        impl<S> std::ops::DerefMut for CaseFold<S> {
+        impl<S> DerefMut for CaseFold<S> {
             #[inline]
             fn deref_mut(&mut self) -> &mut Self::Target {
                 &mut self.0
@@ -77,8 +85,8 @@ macro_rules! impl_ci {
             }
         }
 
-        impl<S: std::str::FromStr> std::str::FromStr for CaseFold<S> {
-            type Err = <S as std::str::FromStr>::Err;
+        impl<S: FromStr> FromStr for CaseFold<S> {
+            type Err = <S as FromStr>::Err;
 
             fn from_str(s: &str) -> Result<Self, Self::Err> {
                 s.parse().map(CaseFold)
@@ -92,7 +100,7 @@ macro_rules! impl_ci {
             }
         }
 
-        impl<S: AsRef<$t>> std::borrow::Borrow<CaseFold<$t>> for CaseFold<S> {
+        impl<S: AsRef<$t>> Borrow<CaseFold<$t>> for CaseFold<S> {
             #[inline]
             fn borrow(&self) -> &CaseFold<$t> {
                 CaseFold::borrow(self.0.as_ref())
@@ -120,27 +128,27 @@ macro_rules! impl_ci {
             }
         }
 
-        impl<'a, S: ?Sized + AsRef<str>> std::fmt::Display for CaseFold<S> {
+        impl<'a, S: ?Sized + AsRef<str>> fmt::Display for CaseFold<S> {
             #[inline]
-            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 self.0.as_ref().fmt(f)
             }
         }
 
-        pub type CaseFoldMap<K, V, S = std::collections::hash_map::RandomState> =
-            crate::as_ref_hashmap::AsRefHashMap<CaseFold<$t>, CaseFold<K>, V, S>;
+        pub type CaseFoldMap<K, V, S = DefaultHashBuilder> =
+            AsRefHashMap<CaseFold<$t>, CaseFold<K>, V, S>;
     };
 }
 
 pub mod ascii {
-    use std::borrow::Borrow;
-    use std::hash::{Hash, Hasher};
-    use std::{iter, slice};
+    use core::hash::{Hash, Hasher};
+    use core::{iter, slice};
 
     #[derive(Copy, Clone, Debug, Default)]
     #[repr(transparent)]
     pub struct CaseFold<S: ?Sized>(S);
 
+    #[cfg(feature = "std")]
     impl ToOwned for CaseFold<[u8]> {
         type Owned = CaseFold<Vec<u8>>;
 
@@ -150,6 +158,7 @@ pub mod ascii {
         }
     }
 
+    #[cfg(feature = "std")]
     impl Borrow<CaseFold<str>> for CaseFold<String> {
         #[inline]
         fn borrow(&self) -> &CaseFold<str> {
@@ -157,6 +166,7 @@ pub mod ascii {
         }
     }
 
+    #[cfg(feature = "std")]
     impl ToOwned for CaseFold<str> {
         type Owned = CaseFold<String>;
 
@@ -201,6 +211,7 @@ pub mod ascii {
         }
     }
 
+    #[cfg(feature = "std")]
     impl AsRef<CaseFold<[u8]>> for String {
         #[inline]
         fn as_ref(&self) -> &CaseFold<[u8]> {
@@ -212,15 +223,16 @@ pub mod ascii {
 }
 
 pub mod unicode {
-    use std::char::ToLowercase;
-    use std::hash::{Hash, Hasher};
-    use std::iter;
-    use std::str::Chars;
+    use core::char::ToLowercase;
+    use core::hash::{Hash, Hasher};
+    use core::iter;
+    use core::str::Chars;
 
     #[derive(Copy, Clone, Debug, Default)]
     #[repr(transparent)]
     pub struct CaseFold<S: ?Sized>(S);
 
+    #[cfg(feature = "std")]
     impl ToOwned for CaseFold<str> {
         type Owned = CaseFold<String>;
 
@@ -268,6 +280,7 @@ pub mod unicode {
         }
     }
 
+    #[cfg(feature = "std")]
     impl AsRef<CaseFold<str>> for String {
         #[inline]
         fn as_ref(&self) -> &CaseFold<str> {

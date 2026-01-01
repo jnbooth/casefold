@@ -17,7 +17,11 @@ must_use_candidate = "allow"
 [dependencies]
 hashbrown = { version = "0.16.1", optional = true }
 
+[dev-dependencies]
+unicase = "2.8.1"
+
 [features]
 default = ["std"]
 hashbrown = ["dep:hashbrown"]
+nightly = []
 std = []

@@ -34,11 +34,19 @@ where
 {
     #[inline]
     fn hash<H: Hasher>(&self, hasher: &mut H) {
-        let mut buf = [0; 4];
+        use crate::HASH_BUF_SIZE as N;
+
+        let mut buf = [0; N + 4];
+        let mut i = 0;
         for c in self.caseless_iter() {
-            for &byte in c.encode_utf8(&mut buf).as_bytes() {
-                hasher.write_u8(byte);
+            i += c.encode_utf8(&mut buf[i..]).len();
+            if i >= N {
+                hasher.write(&buf[..i]);
+                i = 0;
             }
+        }
+        if i != 0 {
+            hasher.write(&buf[..i]);
         }
         hasher.write_u8(0xff);
     }
@@ -49,7 +57,9 @@ crate::impl_casefold!(str);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::hashed;
+    use crate::tests::{MockHasher, hash};
+    const ENCODE: &str =
+        "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz";
 
     #[test]
     fn eq() {
@@ -65,22 +75,23 @@ mod tests {
     }
 
     #[test]
-    fn hash() {
-        assert_eq!(
-            hashed(&CaseFold::new("Maße")),
-            hashed(&CaseFold::new("MASSE"))
-        );
+    fn hash_eq() {
+        assert_eq!(hash(&CaseFold::new("Maße")), hash(&CaseFold::new("MASSE")));
+        assert_ne!(hash(&CaseFold::new("Maße")), hash(&CaseFold::new("MASE")));
+    }
+
+    #[test]
+    fn hash_prefix_free() {
         assert_ne!(
-            hashed(&CaseFold::new("Maße")),
-            hashed(&CaseFold::new("MASE"))
+            hash(&(CaseFold::new("foo"), CaseFold::new("bar"))),
+            hash(&(CaseFold::new("foob"), CaseFold::new("ar")))
         );
     }
 
     #[test]
-    fn prefix_free() {
-        assert_ne!(
-            hashed(&(CaseFold::new("foo"), CaseFold::new("bar"))),
-            hashed(&(CaseFold::new("foob"), CaseFold::new("ar")))
-        );
+    fn encode() {
+        let mut hasher = MockHasher::default();
+        CaseFold::borrow(ENCODE).hash(&mut hasher);
+        assert_eq!(hasher.as_str(), ENCODE.to_ascii_uppercase());
     }
 }

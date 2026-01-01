@@ -29,7 +29,7 @@ where
 {
     #[inline]
     fn caseless_iter(&self) -> iter::Map<slice::Iter<'_, u8>, fn(&u8) -> u8> {
-        self.0.as_ref().iter().map(u8::to_ascii_lowercase)
+        self.0.as_ref().iter().map(u8::to_ascii_uppercase)
     }
 }
 
@@ -50,35 +50,22 @@ where
 {
     #[inline]
     fn hash<H: Hasher>(&self, hasher: &mut H) {
-        let mut iter = EncodeIter {
-            inner: self.0.as_ref().iter(),
-            buf: [0; 16],
-        };
-        while let encoded = iter.next()
-            && !encoded.is_empty()
-        {
-            hasher.write(encoded);
+        use crate::HASH_BUF_SIZE as N;
+
+        let mut buf = [0; N];
+        let mut i = 0;
+        for byte in self.as_ref() {
+            buf[i] = byte.to_ascii_uppercase();
+            i += 1;
+            if i == N {
+                hasher.write(&buf);
+                i = 0;
+            }
+        }
+        if i != 0 {
+            hasher.write(&buf[..i]);
         }
         hasher.write_u8(0xff);
-    }
-}
-
-struct EncodeIter<'a, const N: usize> {
-    inner: slice::Iter<'a, u8>,
-    buf: [u8; N],
-}
-
-impl<const N: usize> EncodeIter<'_, N> {
-    pub fn next(&mut self) -> &[u8] {
-        let mut i = 0;
-        for byte in &mut self.inner {
-            self.buf[i] = byte.to_ascii_lowercase();
-            if i == N - 1 {
-                break;
-            }
-            i += 1;
-        }
-        &self.buf[..i]
     }
 }
 
@@ -87,7 +74,9 @@ crate::impl_casefold!([u8]);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::hashed;
+    use crate::tests::{MockHasher, hash};
+    const ENCODE: &str =
+        "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz";
 
     #[test]
     fn eq() {
@@ -103,38 +92,45 @@ mod tests {
     }
 
     #[test]
-    fn hash() {
+    fn hash_eq() {
         assert_eq!(
-            hashed(&CaseFold::new("fOObAr")),
-            hashed(&CaseFold::new("FOOBAR"))
+            hash(&CaseFold::new("fOObAr")),
+            hash(&CaseFold::new("FOOBAR"))
         );
         assert_ne!(
-            hashed(&CaseFold::new("fOObAr")),
-            hashed(&CaseFold::new("fOObAa"))
+            hash(&CaseFold::new("fOObAr")),
+            hash(&CaseFold::new("fOObAa"))
         );
     }
 
     #[test]
-    fn prefix_free() {
+    fn hash_prefix_free() {
         assert_ne!(
-            hashed(&(CaseFold::new("foo"), CaseFold::new("bar"))),
-            hashed(&(CaseFold::new("foob"), CaseFold::new("ar")))
+            hash(&(CaseFold::new("foo"), CaseFold::new("bar"))),
+            hash(&(CaseFold::new("foob"), CaseFold::new("ar")))
         );
     }
 
     #[test]
     fn encode() {
-        let a = "fOObAr";
-        let mut buf = Vec::new();
-        let mut iter = EncodeIter {
-            inner: a.as_bytes().iter(),
-            buf: [0; 16],
-        };
-        while let encoded = iter.next()
-            && !encoded.is_empty()
-        {
-            buf.extend_from_slice(encoded);
-        }
-        assert_eq!(str::from_utf8(&buf).unwrap(), "foobar");
+        let mut hasher = MockHasher::default();
+        CaseFold::new(ENCODE).hash(&mut hasher);
+        assert_eq!(hasher.as_str(), ENCODE.to_ascii_uppercase());
+    }
+
+    #[cfg(feature = "nightly")]
+    #[bench]
+    fn bench_hash(b: &mut test::Bencher) {
+        let s = CaseFold::new(ENCODE);
+        let mut hasher = std::hash::DefaultHasher::new();
+        b.iter(|| test::black_box(s).hash(&mut hasher));
+    }
+
+    #[cfg(feature = "nightly")]
+    #[bench]
+    fn bench_hash_unicase(b: &mut test::Bencher) {
+        let s = unicase::Ascii::new(ENCODE);
+        let mut hasher = std::hash::DefaultHasher::new();
+        b.iter(|| test::black_box(s).hash(&mut hasher));
     }
 }

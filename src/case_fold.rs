@@ -2,7 +2,7 @@ use core::borrow::Borrow;
 use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{Hash, Hasher};
-use core::ops::{Deref, DerefMut};
+use core::ops::Deref;
 
 use crate::{ascii, unicode};
 
@@ -18,13 +18,6 @@ impl<S> Deref for CaseFold<S> {
     #[inline]
     fn deref(&self) -> &Self::Target {
         &self.inner
-    }
-}
-
-impl<S> DerefMut for CaseFold<S> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
     }
 }
 
@@ -48,12 +41,6 @@ where
             ascii: s.as_ref().is_ascii(),
             inner: s,
         }
-    }
-
-    #[inline]
-    pub fn as_mut(&mut self) -> CaseFoldMut<'_, S> {
-        self.ascii = false; // because destructors are not guaranteed to run
-        CaseFoldMut { fold: self }
     }
 
     #[inline]
@@ -116,10 +103,7 @@ where
     #[inline]
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         if self.ascii {
-            for byte in self.inner.as_ref().as_bytes() {
-                hasher.write_u8(byte.to_ascii_uppercase());
-            }
-            hasher.write_u8(0xff);
+            self.as_ascii().hash(hasher);
         } else {
             self.as_unicode().hash(hasher);
         }
@@ -187,48 +171,16 @@ where
 pub type CaseFoldMap<K, V, S = crate::as_ref_hashmap::DefaultHashBuilder> =
     crate::as_ref_hashmap::AsRefHashMap<unicode::CaseFold<str>, CaseFold<K>, V, S>;
 
-pub struct CaseFoldMut<'a, S>
-where
-    S: AsRef<str>,
-{
-    fold: &'a mut CaseFold<S>,
-}
-
-impl<S> Deref for CaseFoldMut<'_, S>
-where
-    S: AsRef<str>,
-{
-    type Target = S;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.fold.inner
-    }
-}
-
-impl<S> DerefMut for CaseFoldMut<'_, S>
-where
-    S: AsRef<str>,
-{
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.fold.inner
-    }
-}
-
-impl<S> Drop for CaseFoldMut<'_, S>
-where
-    S: AsRef<str>,
-{
-    fn drop(&mut self) {
-        self.fold.ascii = self.fold.inner.as_ref().is_ascii();
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::hashed;
+    use crate::tests::hash;
+
+    const ENCODE_ASCII: &str =
+        "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz";
+
+    const ENCODE_UTF8: &str =
+        "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyß";
 
     #[test]
     fn eq() {
@@ -244,22 +196,16 @@ mod tests {
     }
 
     #[test]
-    fn hash() {
-        assert_eq!(
-            hashed(&CaseFold::new("Maße")),
-            hashed(&CaseFold::new("MASSE"))
-        );
-        assert_ne!(
-            hashed(&CaseFold::new("Maße")),
-            hashed(&CaseFold::new("MASE"))
-        );
+    fn hash_eq() {
+        assert_eq!(hash(&CaseFold::new("Maße")), hash(&CaseFold::new("MASSE")));
+        assert_ne!(hash(&CaseFold::new("Maße")), hash(&CaseFold::new("MASE")));
     }
 
     #[test]
-    fn prefix_free() {
+    fn hash_prefix_free() {
         assert_ne!(
-            hashed(&(CaseFold::new("foo"), CaseFold::new("bar"))),
-            hashed(&(CaseFold::new("foob"), CaseFold::new("ar")))
+            hash(&(CaseFold::new("foo"), CaseFold::new("bar"))),
+            hash(&(CaseFold::new("foob"), CaseFold::new("ar")))
         );
     }
 
@@ -270,18 +216,58 @@ mod tests {
     }
 
     #[test]
+    fn hash_ascii_consistency() {
+        assert_eq!(
+            hash(&ascii::CaseFold::new(ENCODE_ASCII)),
+            hash(&unicode::CaseFold::new(ENCODE_ASCII))
+        );
+    }
+
+    #[test]
     fn hash_across_ascii() {
         assert_eq!(
-            hashed(&CaseFold::new("fOObaR")),
-            hashed(&unicode::CaseFold::new("fOObar"))
+            hash(&CaseFold::new(ENCODE_ASCII)),
+            hash(&ascii::CaseFold::new(ENCODE_ASCII))
         );
     }
 
     #[test]
     fn hash_across_unicode() {
         assert_eq!(
-            hashed(&CaseFold::new("Maße")),
-            hashed(&unicode::CaseFold::new("MASSE"))
+            hash(&CaseFold::new(ENCODE_UTF8)),
+            hash(&unicode::CaseFold::new(ENCODE_UTF8))
         );
+    }
+
+    #[cfg(feature = "nightly")]
+    #[bench]
+    fn bench_hash_ascii(b: &mut test::Bencher) {
+        let s = CaseFold::new(ENCODE_ASCII);
+        let mut hasher = std::hash::DefaultHasher::new();
+        b.iter(|| test::black_box(s).hash(&mut hasher));
+    }
+
+    #[cfg(feature = "nightly")]
+    #[bench]
+    fn bench_hash_ascii_unicase(b: &mut test::Bencher) {
+        let s = unicase::UniCase::new(ENCODE_ASCII);
+        let mut hasher = std::hash::DefaultHasher::new();
+        b.iter(|| test::black_box(s).hash(&mut hasher));
+    }
+
+    #[cfg(feature = "nightly")]
+    #[bench]
+    fn bench_hash_unicode(b: &mut test::Bencher) {
+        let s = CaseFold::new(ENCODE_UTF8);
+        let mut hasher = std::hash::DefaultHasher::new();
+        b.iter(|| test::black_box(s).hash(&mut hasher));
+    }
+
+    #[cfg(feature = "nightly")]
+    #[bench]
+    fn bench_hash_unicode_unicase(b: &mut test::Bencher) {
+        let s = unicase::UniCase::new(ENCODE_UTF8);
+        let mut hasher = std::hash::DefaultHasher::new();
+        b.iter(|| test::black_box(s).hash(&mut hasher));
     }
 }

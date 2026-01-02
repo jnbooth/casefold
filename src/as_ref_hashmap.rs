@@ -82,7 +82,7 @@ where
 }
 
 impl<R: ?Sized, K, V, S> AsRefHashMap<R, K, V, S> {
-    pub fn with_hasher(hash_builder: S) -> Self {
+    pub const fn with_hasher(hash_builder: S) -> Self {
         Self(HashMap::with_hasher(hash_builder), PhantomData)
     }
 

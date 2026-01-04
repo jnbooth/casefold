@@ -5,17 +5,18 @@ extern crate test;
 
 const HASH_BUF_SIZE: usize = 16;
 
-#[cfg(any(feature = "hashbrown", feature = "std"))]
-mod as_ref_hashmap;
-
 pub mod ascii;
 
 mod case_fold;
-pub use case_fold::{CaseFold, CaseFoldMap};
+pub use case_fold::CaseFold;
 
-mod impl_macro;
+#[cfg(any(feature = "hashbrown", feature = "std"))]
+mod map;
+
+mod impl_macros;
 
 pub mod unicode;
+pub use unicode::CaseFoldMap;
 
 #[cfg(test)]
 mod tests {

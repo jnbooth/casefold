@@ -59,6 +59,42 @@ where
     }
 }
 
+impl<'a> From<&'a ascii::CaseFold<String>> for CaseFold<&'a str> {
+    fn from(value: &'a ascii::CaseFold<String>) -> Self {
+        Self {
+            ascii: true,
+            inner: value,
+        }
+    }
+}
+
+impl<'a> From<&'a unicode::CaseFold<String>> for CaseFold<&'a str> {
+    fn from(value: &'a unicode::CaseFold<String>) -> Self {
+        Self {
+            ascii: false,
+            inner: value,
+        }
+    }
+}
+
+impl From<ascii::CaseFold<String>> for CaseFold<String> {
+    fn from(value: ascii::CaseFold<String>) -> Self {
+        Self {
+            ascii: true,
+            inner: value.into_inner(),
+        }
+    }
+}
+
+impl From<unicode::CaseFold<String>> for CaseFold<String> {
+    fn from(value: unicode::CaseFold<String>) -> Self {
+        Self {
+            ascii: false,
+            inner: value.into_inner(),
+        }
+    }
+}
+
 impl<'a> CaseFold<&'a str> {
     #[inline]
     pub const fn const_new(s: &'a str) -> Self {
@@ -166,10 +202,6 @@ where
         self.as_unicode()
     }
 }
-
-#[cfg(any(feature = "hashbrown", feature = "std"))]
-pub type CaseFoldMap<K, V, S = crate::as_ref_hashmap::DefaultHashBuilder> =
-    crate::as_ref_hashmap::AsRefHashMap<unicode::CaseFold<str>, CaseFold<K>, V, S>;
 
 #[cfg(test)]
 mod tests {

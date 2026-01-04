@@ -1,7 +1,9 @@
 use core::hash::{Hash, Hasher};
 use core::{iter, slice};
+#[cfg(feature = "std")]
+use std::borrow::Borrow;
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Default)]
 #[repr(transparent)]
 pub struct CaseFold<S: ?Sized>(S);
 
@@ -23,9 +25,29 @@ impl ToOwned for CaseFold<str> {
     }
 }
 
-impl<S: ?Sized> CaseFold<S>
+impl<S> CaseFold<S>
 where
-    S: AsRef<[u8]>,
+    S: ?Sized,
+{
+    /// Convert a `[u8]` or `str` reference into a `CaseFold` reference.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use casefold::ascii::CaseFold;
+    ///
+    /// let s: &CaseFold<str> = CaseFold::borrow("s");
+    /// ```
+    #[inline]
+    pub const fn borrow(s: &S) -> &Self {
+        // SAFETY: #[repr(transparent)]
+        unsafe { &*(core::ptr::from_ref::<S>(s) as *const Self) }
+    }
+}
+
+impl<S> CaseFold<S>
+where
+    S: AsRef<[u8]> + ?Sized,
 {
     #[inline]
     fn caseless_iter(&self) -> iter::Map<slice::Iter<'_, u8>, fn(&u8) -> u8> {
@@ -33,10 +55,10 @@ where
     }
 }
 
-impl<S: ?Sized, Rhs: ?Sized> PartialEq<CaseFold<Rhs>> for CaseFold<S>
+impl<S, Rhs> PartialEq<CaseFold<Rhs>> for CaseFold<S>
 where
-    S: AsRef<[u8]>,
-    Rhs: AsRef<[u8]>,
+    S: AsRef<[u8]> + ?Sized,
+    Rhs: AsRef<[u8]> + ?Sized,
 {
     #[inline]
     fn eq(&self, other: &CaseFold<Rhs>) -> bool {
@@ -44,9 +66,9 @@ where
     }
 }
 
-impl<S: ?Sized> Hash for CaseFold<S>
+impl<S> Hash for CaseFold<S>
 where
-    S: AsRef<[u8]>,
+    S: AsRef<[u8]> + ?Sized,
 {
     #[inline]
     fn hash<H: Hasher>(&self, hasher: &mut H) {
@@ -70,6 +92,16 @@ where
 }
 
 crate::impl_casefold!([u8]);
+
+#[cfg(any(feature = "hashbrown", feature = "std"))]
+/// Case-insensitive wrapper around a [`HashMap`](crate::map::HashMap), using ASCII case folding.
+#[repr(transparent)]
+pub struct CaseFoldMap<K, V, S = crate::map::DefaultHashBuilder>(
+    crate::map::HashMap<CaseFold<K>, V, S>,
+);
+
+#[cfg(any(feature = "hashbrown", feature = "std"))]
+crate::impl_casefoldmap!([u8]);
 
 #[cfg(test)]
 mod tests {
